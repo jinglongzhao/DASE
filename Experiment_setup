@@ -1,0 +1,140 @@
+#====================================#
+#==========Experiment Setup==========#
+#====================================#
+#=============Functions==============#
+#====================================#
+
+#======================================#
+#==========Potential Outcomes==========#
+#======================================#
+
+generate_outcomes <- function(assignment.path_)
+{
+  Y.vec = c()
+  Y.vec.1 = mu.fixed.effect + alpha.fixed.effects[1] + delta.coef.1 * assignment.path_[1] + epsilon.noises[1]
+  Y.vec.2 = mu.fixed.effect + alpha.fixed.effects[2] + delta.coef.1 * assignment.path_[2] + delta.coef.2 * assignment.path_[1] + epsilon.noises[2]
+  Y.vec = c(Y.vec.1, Y.vec.2)
+  for(t.temp in 1:time.horizon)
+  {
+    Y.temp = mu.fixed.effect + alpha.fixed.effects[t.temp] + delta.coef.1 * assignment.path_[t.temp] + delta.coef.2 * assignment.path_[t.temp-1] + delta.coef.3 * assignment.path_[t.temp-2] + epsilon.noises[t.temp]
+    Y.vec = c(Y.vec, Y.temp)
+  }
+  return(Y.vec)
+}
+
+generate_outcomes_worst_case <- function(assignment.path_)
+{
+  return(rep(10, time.horizon))
+}
+
+#===================================#
+#==========Assignment Path==========#
+#===================================#
+
+generate_assignments <- function(time.horizon = time.horizon, randomization.points = randomization.points, re.randomization = FALSE)
+{
+  K = length(randomization.points)
+  W.at.K.vec = sample(c(0,1), replace=TRUE, size=K)
+  W.vec = c()
+  if(K>1)
+  {
+    #===When k <= K-1, append the proper assignments during each epoch
+    for (k.temp in 1:(K-1))
+    {
+      W.vec = c(W.vec, rep(W.at.K.vec[k.temp], randomization.points[k.temp+1]-randomization.points[k.temp]))
+    }
+    #===When k == K, append the last epoch after the last randomization
+    W.vec = c(W.vec, rep(W.at.K.vec[K], time.horizon+1-randomization.points[K]))
+  }
+  if(K==1)
+  {
+    W.vec = rep(W.at.K.vec[K], time.horizon+1-randomization.points[K])
+  }
+  
+  if(re.randomization == TRUE)
+  {
+    treatment.balance = abs(sum(W.at.K.vec) - K /2)
+    while(treatment.balance > 2)
+    {
+      W.at.K.vec = sample(c(0,1), replace=TRUE, size=K)
+      W.vec = c()
+      if(K>1)
+      {
+        #===When k <= K-1, append the proper assignments during each epoch
+        for (k.temp in 1:(K-1))
+        {
+          W.vec = c(W.vec, rep(W.at.K.vec[k.temp], randomization.points[k.temp+1]-randomization.points[k.temp]))
+        }
+        #===When k == K, append the last epoch after the last randomization
+        W.vec = c(W.vec, rep(W.at.K.vec[K], time.horizon+1-randomization.points[K]))
+      }
+      if(K==1)
+      {
+        W.vec = rep(W.at.K.vec[K], time.horizon+1-randomization.points[K])
+      }
+      treatment.balance = abs(sum(W.at.K.vec) - K /2)
+    }
+  }
+  
+  return(W.vec)
+}
+
+#===================================#
+#==========Causal Estimand==========#
+#===================================#
+
+generate_estimand <- function(p.lag.length_ = p.lag.length)
+{
+  all.ones.outcome.path = generate_outcomes(assignment.path_ = all.ones)
+  all.zeros.outcome.path = generate_outcomes(assignment.path_ = all.zeros)
+  
+  return.estimand = sum(all.ones.outcome.path[(p.lag.length_+1):time.horizon] - all.zeros.outcome.path[(p.lag.length_+1):time.horizon]) / (time.horizon - p.lag.length_)
+  return(return.estimand)
+}
+
+generate_estimand_worst_case <- function(p.lag.length_ = p.lag.length)
+{
+  all.ones.outcome.path = generate_outcomes_worst_case(assignment.path_ = all.ones)
+  all.zeros.outcome.path = generate_outcomes_worst_case(assignment.path_ = all.zeros)
+  
+  return.estimand = sum(all.ones.outcome.path[(p.lag.length_+1):time.horizon] - all.zeros.outcome.path[(p.lag.length_+1):time.horizon]) / (time.horizon - p.lag.length_)
+  return(return.estimand)
+}
+
+#=================================#
+#==========H-T Estimator==========#
+#=================================#
+
+generate_estimator <- function(randomization.points_ = randomization.points,
+                               assignment.path_ = assignment.path,
+                               potential.outcome.path_ = potential.outcome.path,
+                               p.lag.length_ = p.lag.length)
+{
+  inversed.propensity.score = rep(0, p.lag.length_)
+  for (t in (p.lag.length_+1):time.horizon)
+  {
+    i.p.s.temp = 2^(sum(randomization.points_ %in% ((t-p.lag.length_+1):t)) + 1)
+    inversed.propensity.score = c(inversed.propensity.score, i.p.s.temp)
+  }
+  # inversed.propensity.score
+  positive.or.negative = rep(0, p.lag.length_)
+  for (t in (p.lag.length_+1):time.horizon)
+  {
+    if(sum(assignment.path_[(t-p.lag.length_) : t] == 1) == (p.lag.length_+1))
+    {
+      p.or.n.temp = 1
+    }
+    else if(sum(assignment.path_[(t-p.lag.length_) : t] == 1) == 0)
+    {
+      p.or.n.temp = -1
+    }
+    else
+    {
+      p.or.n.temp = 0
+    }
+    positive.or.negative = c(positive.or.negative, p.or.n.temp)
+  }
+  # positive.or.negative
+  estimator.return = sum(potential.outcome.path_ * inversed.propensity.score * positive.or.negative)  / (time.horizon - p.lag.length_)
+  return(estimator.return)
+}
