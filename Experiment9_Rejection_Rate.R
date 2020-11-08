@@ -7,7 +7,7 @@
 set.seed(111111)
 
 SAMPLE.TIMES.fisher.test = 1000
-SAMPLE.TIMES.rejection.rate = 1000 #100000
+SAMPLE.TIMES.rejection.rate = 1000 #100000 or any other repeated times
 
 #===Correct m===#
 no.m.carryover = 2
